@@ -6,18 +6,33 @@ use std::{
 use regex::Regex;
 use std::collections::HashMap;
 
+extern crate urlencoding;
+
+use urlencoding::decode;
+
+struct Link {
+    url: String,
+    title: String,
+}
+
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+
+    let mut links: Vec<Link> = vec![];
+    links.push(Link {
+        title: "Test".to_string(),
+        url: "https://google.ca".to_string()
+    });
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
 
-        handle_connection(stream);
+        handle_connection(stream, &mut links);
     }
 }
 
 
-fn handle_connection(mut stream: TcpStream) {
+fn handle_connection(mut stream: TcpStream, links: &mut Vec<Link>) {
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut request_line = "".to_string();
@@ -45,7 +60,27 @@ fn handle_connection(mut stream: TcpStream) {
 
         if path == "/" {
             let status_line = "HTTP/1.1 200 OK";
-            let contents = fs::read_to_string("static/index.html").unwrap();
+
+            let mut links_html = String::new();
+            for link in links {
+                links_html = format!("{}<div><a href='{}'>{}</a></div>", links_html, &link.url, &link.title);
+            }
+
+            let contents = format!(r#"
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="utf-8">
+                    <title>dev/tails | News</title>
+                </head>
+                <body>
+                    <div class="header">
+                        <a href="/submit">Submit</a>
+                    </div>
+                    {}
+                </body>
+                </html>
+            "#, links_html);
             let length = contents.len();
 
             let response = format!(
@@ -61,7 +96,7 @@ fn handle_connection(mut stream: TcpStream) {
             
                     buf_reader.read_exact(&mut read_buf_vec);
             
-                    let body = String::from_utf8(read_buf_vec).unwrap();
+                    let body = String::from_utf8(read_buf_vec).unwrap().replace("+", " ");
                     
                     let mut parsed_body_map: HashMap<String, String> = HashMap::new();
             
@@ -74,7 +109,10 @@ fn handle_connection(mut stream: TcpStream) {
                     let title = parsed_body_map.get("title").unwrap();
                     let url = parsed_body_map.get("url").unwrap();
 
-                    println!("{} {}", title, url);
+                    links.push(Link {
+                        title: decode(title).unwrap(),
+                        url: decode(url).unwrap()
+                    });
                 }
             }
             write_file(stream, "static/submit.html");
