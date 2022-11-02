@@ -19,10 +19,16 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
 
     let mut links: Vec<Link> = vec![];
-    links.push(Link {
-        title: "Test".to_string(),
-        url: "https://google.ca".to_string()
-    });
+
+    let links_csv_data = fs::read_to_string("data/links.csv").unwrap();
+    let rows: Vec<&str> = links_csv_data.split("\n").collect();
+    for row in rows {
+        let cols: Vec<&str> = row.split(",").collect();
+        links.push(Link {
+            title: cols[0].to_string(),
+            url: cols[1].to_string()
+        });
+    }
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -75,7 +81,7 @@ fn handle_connection(mut stream: TcpStream, links: &mut Vec<Link>) {
                 </head>
                 <body>
                     <div class="header">
-                        <a href="/submit">Submit</a>
+                        <h1>News</h1>
                     </div>
                     {}
                 </body>
