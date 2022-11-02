@@ -4,6 +4,7 @@ use std::{
     net::{TcpListener, TcpStream}
 };
 use regex::Regex;
+use std::collections::HashMap;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
@@ -17,8 +18,25 @@ fn main() {
 
 
 fn handle_connection(mut stream: TcpStream) {
-    let buf_reader = BufReader::new(&mut stream);
-    let request_line = buf_reader.lines().next().unwrap().unwrap();
+    let mut buf_reader = BufReader::new(&mut stream);
+
+    let mut request_line = "".to_string();
+    buf_reader.read_line(&mut request_line);
+
+    let mut header_line = "".to_string();
+    let mut header_map: HashMap<String, String> = HashMap::new();
+    loop {
+        buf_reader.read_line(&mut header_line);
+
+        if header_line.len() == 2 {
+            break
+        }
+
+        let vec: Vec<&str> = header_line.trim().split(": ").collect();
+        header_map.insert(vec[0].to_string(), vec[1].to_string());
+
+        header_line = "".to_string();
+    }
 
     let re = Regex::new(r"(GET|POST) ([\w/]*) ()").unwrap();
     if let Some(caps) = re.captures(&request_line) {
@@ -37,7 +55,27 @@ fn handle_connection(mut stream: TcpStream) {
             stream.write_all(response.as_bytes()).unwrap();
         } else if path == "/submit" {
             if method == "POST" {
-                println!("{}", request_line);
+                if let Some(content_length) = header_map.get("Content-Length") {
+                    let content_length_int: usize = content_length.parse().unwrap();
+                    let mut read_buf_vec = vec![0; content_length_int];
+            
+                    buf_reader.read_exact(&mut read_buf_vec);
+            
+                    let body = String::from_utf8(read_buf_vec).unwrap();
+                    
+                    let mut parsed_body_map: HashMap<String, String> = HashMap::new();
+            
+                    let key_values: Vec<&str> = body.split("&").collect();
+                    for key_val in key_values {
+                        let actual_kv: Vec<&str> = key_val.split("=").collect();
+                        parsed_body_map.insert(actual_kv[0].to_string(), actual_kv[1].to_string());
+                    }
+
+                    let title = parsed_body_map.get("title").unwrap();
+                    let url = parsed_body_map.get("url").unwrap();
+
+                    println!("{} {}", title, url);
+                }
             }
             write_file(stream, "static/submit.html");
         }
